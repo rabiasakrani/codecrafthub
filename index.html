@@ -606,7 +606,7 @@
     </div>
 
     <script>
-      const API = 'http://localhost:5000/api/courses';
+      const API = 'https://rabiasakrani-5000.theianext-0-labs-prod-misc-tools-us-east-0.proxy.cognitiveclass.ai/api/courses';
 
       // ── Utility ──────────────────────────────────────────────────────────────
 
@@ -704,7 +704,7 @@
             <td><span class="status-badge ${statusClass(c.status)}">${escHtml(c.status)}</span></td>
             <td class="td-created">${formatDate(c.created_at)}</td>
             <td class="td-actions">
-              <button class="btn btn-edit" onclick="openEditModal(${JSON.stringify(c)})">&#9998; Edit</button>
+                <button class="btn btn-edit" onclick='openEditModal(${JSON.stringify(c).replace(/'/g, "&#39;")})'>&#9998; Edit</button>
               <button class="btn btn-delete" onclick="openConfirmDelete('${escHtml(c.id)}', '${escHtml(c.name)}')">&#128465; Remove</button>
             </td>
           </tr>`).join('');

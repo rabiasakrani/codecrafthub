@@ -1,141 +1,123 @@
-// app.js
-// CodeCraftHub - Simple Course Tracking REST API
-// Course data is stored in courses.json (no database).
+// CodeCraftHub - Personal Learning Goal Tracker API
 
 const express = require("express");
+const cors = require("cors");
 const fs = require("fs");
 const path = require("path");
 
 const app = express();
+const PORT = 5000;
 
-// Parse incoming JSON request bodies
+// Enable CORS so the frontend running on Live Server
+// can communicate with this backend.
+app.use(cors());
+
+// Parse incoming JSON request bodies.
 app.use(express.json());
 
-// Configuration
-const PORT = 5000;
+// JSON file used as simple persistent storage.
 const DATA_FILE = path.join(__dirname, "courses.json");
 
-const ALLOWED_STATUS = [
+// Allowed course status values.
+const ALLOWED_STATUSES = [
   "Not Started",
   "In Progress",
-  "Completed"
+  "Completed",
 ];
 
-// Create courses.json automatically if it does not exist
+// Create courses.json automatically if it does not exist.
 function ensureDataFile() {
-  try {
-    if (!fs.existsSync(DATA_FILE)) {
-      fs.writeFileSync(
-        DATA_FILE,
-        JSON.stringify([], null, 2),
-        "utf-8"
-      );
-
-      console.log("Created courses.json");
-    }
-  } catch (err) {
-    console.error("Failed to create courses.json:", err);
-    process.exit(1);
+  if (!fs.existsSync(DATA_FILE)) {
+    fs.writeFileSync(DATA_FILE, "[]", "utf8");
+    console.log("Created courses.json");
   }
 }
 
-// Read all courses from courses.json
+// Read all courses from courses.json.
 function readCoursesFromFile() {
   try {
-    const raw = fs.readFileSync(DATA_FILE, "utf-8");
+    const data = fs.readFileSync(DATA_FILE, "utf8");
 
-    if (!raw.trim()) {
+    if (!data.trim()) {
       return [];
     }
 
-    const courses = JSON.parse(raw);
-
-    if (!Array.isArray(courses)) {
-      return [];
-    }
-
-    return courses;
-  } catch (err) {
-    throw new Error(`File read error: ${err.message}`);
+    return JSON.parse(data);
+  } catch (error) {
+    throw new Error("Unable to read courses data");
   }
 }
 
-// Write courses to courses.json
+// Save all courses to courses.json.
 function writeCoursesToFile(courses) {
   try {
     fs.writeFileSync(
       DATA_FILE,
       JSON.stringify(courses, null, 2),
-      "utf-8"
+      "utf8"
     );
-  } catch (err) {
-    throw new Error(`File write error: ${err.message}`);
+  } catch (error) {
+    throw new Error("Unable to save courses data");
   }
 }
 
-// Validate target_date format
-function isValidDateYYYYMMDD(value) {
-  const regex = /^\d{4}-\d{2}-\d{2}$/;
-
-  if (!regex.test(value)) {
+// Validate YYYY-MM-DD date format.
+function isValidDateYYYYMMDD(dateString) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
     return false;
   }
 
-  const date = new Date(value + "T00:00:00");
+  const date = new Date(`${dateString}T00:00:00Z`);
 
-  return !Number.isNaN(date.getTime());
+  if (Number.isNaN(date.getTime())) {
+    return false;
+  }
+
+  return date.toISOString().slice(0, 10) === dateString;
 }
 
-// Generate the next course ID
+// Generate the next course ID.
 function getNextId(courses) {
   if (courses.length === 0) {
     return 1;
   }
 
-  const maxId = courses.reduce((max, course) => {
-    return course.id > max ? course.id : max;
-  }, 0);
-
-  return maxId + 1;
+  return Math.max(...courses.map((course) => course.id)) + 1;
 }
 
-// Ensure data file exists before starting the API
-ensureDataFile();
-
-/*
- * POST /api/courses
- * Add a new course
- */
+// ----------------------------------------------------
+// CREATE COURSE
+// POST /api/courses
+// ----------------------------------------------------
 app.post("/api/courses", (req, res) => {
   try {
     const {
       name,
       description,
       target_date,
-      status
+      status,
     } = req.body;
 
-    // Check required fields
+    // Validate required fields.
     if (!name || !description || !target_date || !status) {
       return res.status(400).json({
         message:
-          "Missing required fields: name, description, target_date, status"
+          "Missing required fields: name, description, target_date, status",
       });
     }
 
-    // Check status
-    if (!ALLOWED_STATUS.includes(status)) {
+    // Validate status.
+    if (!ALLOWED_STATUSES.includes(status)) {
       return res.status(400).json({
         message:
-          `Invalid status. Allowed values: ${ALLOWED_STATUS.join(", ")}`
+          "Invalid status. Allowed values: Not Started, In Progress, Completed",
       });
     }
 
-    // Check target date
+    // Validate date.
     if (!isValidDateYYYYMMDD(target_date)) {
       return res.status(400).json({
-        message:
-          "Invalid target_date format. Expected YYYY-MM-DD"
+        message: "Invalid target_date. Use YYYY-MM-DD format",
       });
     }
 
@@ -147,7 +129,7 @@ app.post("/api/courses", (req, res) => {
       description,
       target_date,
       status,
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
     };
 
     courses.push(newCourse);
@@ -155,44 +137,40 @@ app.post("/api/courses", (req, res) => {
     writeCoursesToFile(courses);
 
     return res.status(201).json(newCourse);
-  } catch (err) {
-    console.error(err);
-
+  } catch (error) {
     return res.status(500).json({
-      message: err.message
+      message: error.message,
     });
   }
 });
 
-/*
- * GET /api/courses
- * Get all courses
- */
+// ----------------------------------------------------
+// GET ALL COURSES
+// GET /api/courses
+// ----------------------------------------------------
 app.get("/api/courses", (req, res) => {
   try {
     const courses = readCoursesFromFile();
 
-    return res.json(courses);
-  } catch (err) {
-    console.error(err);
-
+    return res.status(200).json(courses);
+  } catch (error) {
     return res.status(500).json({
-      message: err.message
+      message: error.message,
     });
   }
 });
 
-/*
- * GET /api/courses/:id
- * Get one course
- */
+// ----------------------------------------------------
+// GET ONE COURSE
+// GET /api/courses/:id
+// ----------------------------------------------------
 app.get("/api/courses/:id", (req, res) => {
   try {
     const id = Number(req.params.id);
 
     if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({
-        message: "Invalid course id"
+        message: "Invalid course ID",
       });
     }
 
@@ -204,31 +182,29 @@ app.get("/api/courses/:id", (req, res) => {
 
     if (!course) {
       return res.status(404).json({
-        message: "Course not found"
+        message: "Course not found",
       });
     }
 
-    return res.json(course);
-  } catch (err) {
-    console.error(err);
-
+    return res.status(200).json(course);
+  } catch (error) {
     return res.status(500).json({
-      message: err.message
+      message: error.message,
     });
   }
 });
 
-/*
- * PUT /api/courses/:id
- * Update an existing course
- */
+// ----------------------------------------------------
+// UPDATE COURSE
+// PUT /api/courses/:id
+// ----------------------------------------------------
 app.put("/api/courses/:id", (req, res) => {
   try {
     const id = Number(req.params.id);
 
     if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({
-        message: "Invalid course id"
+        message: "Invalid course ID",
       });
     }
 
@@ -236,114 +212,116 @@ app.put("/api/courses/:id", (req, res) => {
       name,
       description,
       target_date,
-      status
+      status,
     } = req.body;
 
-    // Check required fields
+    // All fields are required for the update.
     if (!name || !description || !target_date || !status) {
       return res.status(400).json({
         message:
-          "Missing required fields: name, description, target_date, status"
+          "Missing required fields: name, description, target_date, status",
       });
     }
 
-    // Check status
-    if (!ALLOWED_STATUS.includes(status)) {
+    // Validate status.
+    if (!ALLOWED_STATUSES.includes(status)) {
       return res.status(400).json({
         message:
-          `Invalid status. Allowed values: ${ALLOWED_STATUS.join(", ")}`
+          "Invalid status. Allowed values: Not Started, In Progress, Completed",
       });
     }
 
-    // Check target date
+    // Validate date.
     if (!isValidDateYYYYMMDD(target_date)) {
       return res.status(400).json({
-        message:
-          "Invalid target_date format. Expected YYYY-MM-DD"
+        message: "Invalid target_date. Use YYYY-MM-DD format",
       });
     }
 
     const courses = readCoursesFromFile();
 
-    const index = courses.findIndex(
+    const courseIndex = courses.findIndex(
       (course) => course.id === id
     );
 
-    if (index === -1) {
+    if (courseIndex === -1) {
       return res.status(404).json({
-        message: "Course not found"
+        message: "Course not found",
       });
     }
 
-    // Keep the original created_at timestamp
+    // Preserve the original created_at timestamp.
     const updatedCourse = {
-      ...courses[index],
+      id,
       name,
       description,
       target_date,
-      status
+      status,
+      created_at: courses[courseIndex].created_at,
     };
 
-    courses[index] = updatedCourse;
+    courses[courseIndex] = updatedCourse;
 
     writeCoursesToFile(courses);
 
-    return res.json(updatedCourse);
-  } catch (err) {
-    console.error(err);
-
+    return res.status(200).json(updatedCourse);
+  } catch (error) {
     return res.status(500).json({
-      message: err.message
+      message: error.message,
     });
   }
 });
 
-/*
- * DELETE /api/courses/:id
- * Delete a course
- */
+// ----------------------------------------------------
+// DELETE COURSE
+// DELETE /api/courses/:id
+// ----------------------------------------------------
 app.delete("/api/courses/:id", (req, res) => {
   try {
     const id = Number(req.params.id);
 
     if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({
-        message: "Invalid course id"
+        message: "Invalid course ID",
       });
     }
 
     const courses = readCoursesFromFile();
 
-    const index = courses.findIndex(
+    const courseIndex = courses.findIndex(
       (course) => course.id === id
     );
 
-    if (index === -1) {
+    if (courseIndex === -1) {
       return res.status(404).json({
-        message: "Course not found"
+        message: "Course not found",
       });
     }
 
-    const removed = courses.splice(index, 1)[0];
+    const removed = courses.splice(courseIndex, 1)[0];
 
     writeCoursesToFile(courses);
 
-    return res.json({
+    return res.status(200).json({
       message: "Course deleted",
-      removed
+      removed,
     });
-  } catch (err) {
-    console.error(err);
-
+  } catch (error) {
     return res.status(500).json({
-      message: err.message
+      message: error.message,
     });
   }
 });
 
-// Start the server on port 5000
-app.listen(PORT, () => {
-  console.log(
-    `CodeCraftHub API running on http://localhost:${PORT}`
-  );
-});
+// Make sure courses.json exists before starting server.
+try {
+  ensureDataFile();
+
+  app.listen(PORT, () => {
+    console.log(
+      `CodeCraftHub API running on http://localhost:${PORT}`
+    );
+  });
+} catch (error) {
+  console.error("Failed to start server:", error.message);
+}
